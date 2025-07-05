@@ -73,7 +73,7 @@ def _write_to_csv() -> None:
     Generates multiple fake user records and writes them to a CSV file.
     """
     # Create a Faker instance with Romanian data.
-    fake = _create_data("ro_RO")
+    fake = _create_data("es_MX")
     
     # Define the CSV headers.
     headers = [
@@ -89,13 +89,12 @@ def _write_to_csv() -> None:
         rows = random.randint(0, 1_101)
     
     # Open the CSV file for writing.
-    with open("/opt/airflow/data/raw_data.csv", mode="a", encoding="utf-8", newline="") as file:
+    with open("/opt/airflow/data/raw_data.csv", mode="w", encoding="utf-8", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(headers)
-        
-        # Generate and write each record to the CSV.
         for _ in range(rows):
             writer.writerow(_generate_record(fake))
+
     # Log the action.
     logging.info(f"Written {rows} records to the CSV file.")
 
@@ -105,7 +104,11 @@ def _add_id() -> None:
     Adds a unique UUID to each row in a CSV file.
     """
     # Load the CSV into a Polars DataFrame.
-    df = pl.read_csv("/opt/airflow/data/raw_data.csv")
+    df = pl.read_csv(
+    "/opt/airflow/data/raw_data.csv",
+    dtypes={"personal_number": pl.Utf8}               # <- force SSN column to string
+)
+
     # Generate a list of UUIDs (one for each row).
     uuid_list = [str(uuid.uuid4()) for _ in range(df.height)]
     # Add a new column with unique IDs.
@@ -188,14 +191,15 @@ create_raw_table_task = SQLExecuteQueryOperator(
     task_id='create_raw_table',
     conn_id='postgres_conn',
     sql="""
-        CREATE TABLE IF NOT EXISTS driven_raw.raw_batch_data (
+        DROP TABLE IF EXISTS driven_raw.raw_batch_data;
+        CREATE TABLE driven_raw.raw_batch_data (
             person_name VARCHAR(100),
             user_name VARCHAR(100),
             email VARCHAR(100),
-            personal_number NUMERIC, 
-            birth_date VARCHAR(100), 
-            address VARCHAR(100),
-            phone VARCHAR(100), 
+            personal_number NUMERIC,
+            birth_date VARCHAR(100),
+            address VARCHAR(300),
+            phone VARCHAR(100),
             mac_address VARCHAR(100),
             ip_address VARCHAR(100),
             iban VARCHAR(100),
@@ -207,8 +211,9 @@ create_raw_table_task = SQLExecuteQueryOperator(
             unique_id VARCHAR(100)
         );
     """,
-    dag=dag
+    dag=dag,
 )
+
 
 # Define load CSV data into the table task.
 load_raw_data_task = SQLExecuteQueryOperator(
